@@ -1,264 +1,253 @@
 """
-CostSage AI - Interactive Web Cockpit
+CostSage AI - Layman & Technical Software Scoping Cockpit
 File: app.py
 
-Architecture Overview:
-1. Sidebar Configuration:
-   - Captures plain-English project brief or technical scale.
-   - Sizing controls: Dev headcount, salary burn, and AI tooling strategy.
-   - Real-time scope levers: Managed services (BaaS) and MVP feature locking.
-   - Optional OpenAI API Key input for cloud intelligence.
-2. Calibration Engine (Empirical Neuro-Fuzzy Bridge):
-   - Computes effective KLOC, architectural complexity, and nominal effort.
-   - Applies AI velocity multipliers and PR review penalties.
-3. Dual-Audience Presentation:
-   - Audience A (Founder / Layperson): Clear KPI cards,plain-English summary, and AI savings.
-   - Audience B (Engineering Lead): Expandable technical telemetry table (KLOC, complexity, review drag).
-4. Conversational Advisory Chat:
-   - Uses CostSageAdvisor to handle interactive feasibility and scope-cut queries.
+Features:
+- Step-by-step user input: Project Idea, Platform, Language, Budget, Team.
+- Compares AI strategies side-by-side with multi-select.
+- Budget Viability Check: Directly calculates if your investment is sufficient.
+- Report Views: Summary Report vs. Detailed Technical Audit.
+- Conversational chat advisor dynamically grounded in your exact specs.
 """
 
 import streamlit as st
 import pandas as pd
 from src.llm_reasoning import CostSageAdvisor
 
-# Configure page metadata and wide layout
 st.set_page_config(
-    page_title="CostSage AI | Software Delivery & Cost Cockpit",
-    page_icon="🚀",
+    page_title="CostSage AI | Project Delivery & Cost Estimator",
+    page_icon="💡",
     layout="wide"
 )
 
 # ============================================================================
-# SECTION 1: SIDEBAR CONTROLS & PROJECT CONFIGURATION
+# SECTION 1: SIDEBAR - PROJECT QUESTIONNAIRE
 # ============================================================================
 with st.sidebar:
-    st.title("⚙️ CostSage AI Studio")
-    st.caption("Neuro-Fuzzy PyTorch + LLM Advisory Engine")
+    st.title("💡 CostSage Project Intake")
+    st.caption("Tell us about your project to generate a calibrated estimate.")
     st.divider()
 
-    st.subheader("1. Project Specification")
+    st.subheader("1. What are you building?")
+    project_title = st.text_input("Project Name / Title", value="Multiplayer Coin Game")
     project_desc = st.text_area(
-        "Describe your project or MVP idea",
-        value="A mobile marketplace connecting pet owners with mobile groomers, featuring Stripe payments, live GPS tracking, and real-time chat.",
-        height=100
+        "Describe your project idea & key features",
+        value="A real-time multiplayer mobile game with virtual coin economy, daily tasks, player inventory, and matchmaking.",
+        height=90
     )
 
-    project_scale = st.select_slider(
-        "Estimated Project Scale",
-        options=["Small (MVP)", "Medium (Standard SaaS)", "Large (Complex)", "Enterprise (Distributed)"],
-        value="Medium (Standard SaaS)"
+    platform = st.selectbox(
+        "Target Platform",
+        ["Mobile App (iOS & Android)", "Web Application", "Cross-Platform / Desktop", "Backend API & Microservices"]
     )
 
-    st.subheader("2. Squad & Financials")
-    col_sb1, col_sb2 = st.columns(2)
-    with col_sb1:
-        team_size = st.number_input("Dev Headcount", min_value=1, max_value=30, value=4)
-    with col_sb2:
-        monthly_dev_salary = st.number_input("Salary / Dev / Mo ($)", min_value=2000, value=8500, step=500)
-
-    st.subheader("3. AI Coding Strategy")
-    ai_choice = st.radio(
-        "Tooling Tier",
-        [
-            "Premium AI (Cursor / Copilot @ $30/mo)",
-            "Free AI (Local models / basic completions)",
-            "No AI (Traditional manual coding)"
-        ]
+    tech_stack = st.multiselect(
+        "Primary Technologies / Languages",
+        ["Unity / C#", "Python / FastAPI", "Node.js / TypeScript", "React Native / Flutter", "Go", "C++ / Unreal", "Swift / Kotlin"],
+        default=["Unity / C#", "Node.js / TypeScript"]
     )
 
-    st.subheader("4. Cost-Cutting Levers")
-    lever_auth = st.checkbox("Use ready-made building blocks (Supabase / Auth0)")
-    lever_scope = st.checkbox("Lock MVP scope (drop secondary features)")
+    st.subheader("2. Team & Capital Available")
+    col1, col2 = st.columns(2)
+    with col1:
+        team_size = st.number_input("Team Members", min_value=1, max_value=30, value=3)
+    with col2:
+        investment_budget = st.number_input("Available Budget ($)", min_value=1000, value=50000, step=5000)
+
+    st.subheader("3. AI Coding Tools to Evaluate")
+    eval_no_ai = st.checkbox("Traditional (No AI)", value=True)
+    eval_free_ai = st.checkbox("Free AI (Local models / Copilot Free)", value=True)
+    eval_prem_ai = st.checkbox("Premium AI (Cursor / Copilot Pro @ $30/mo)", value=True)
+
+    st.subheader("4. Report Depth")
+    report_type = st.radio("Choose Output Format", ["Summary Report (Layman Friendly)", "Detailed Technical Audit (For Tech Leads)"])
 
     st.subheader("5. LLM API Key (Optional)")
-    api_key_input = st.text_input("OpenAI API Key (leave empty for offline mode)", type="password")
+    api_key_input = st.text_input("OpenAI Key (Leave blank for offline mode)", type="password")
 
 # ============================================================================
-# SECTION 2: CALIBRATION & ENGINE MATH
+# SECTION 2: ESTIMATION ENGINE
 # ============================================================================
-# Map qualitative scale to representative equivalent KLOC (Thousands of Lines of Code)
-kloc_map = {
-    "Small (MVP)": 15.0,
-    "Medium (Standard SaaS)": 35.0,
-    "Large (Complex)": 70.0,
-    "Enterprise (Distributed)": 120.0
-}
-base_kloc = kloc_map[project_scale]
+# Architectural baseline complexity derived from platform & stack
+base_complexity = 3.0
+if "Unity / C#" in tech_stack or "C++ / Unreal" in tech_stack:
+    base_complexity += 0.8  # Real-time state synchronization penalty
+if "Mobile App (iOS & Android)" in platform:
+    base_complexity += 0.3
 
-# Levers adjust sizing and architectural complexity
-effective_kloc = base_kloc * (0.75 if lever_scope else 1.0)
-effective_cplx = 2.5 if lever_auth else 3.5
+# Base sizing estimate (KLOC equivalent) derived from feature scope
+estimated_kloc = 32.0 if "multiplayer" in project_desc.lower() or "game" in project_desc.lower() else 22.0
+nominal_effort = 2.94 * (estimated_kloc ** 1.05) * (base_complexity / 3.0)
 
-# Empirical COCOMO baseline effort calculation (Person-Months)
-raw_effort = 2.94 * (effective_kloc ** 1.05) * (effective_cplx / 3.0)
+# Typical market blended developer burn rate ($6,500/month per full-stack dev)
+standard_monthly_dev_rate = 6500.0
 
-# Research-backed AI impact configurations
-ai_profiles = {
-    "No AI (Traditional manual coding)": {"speedup": 1.0, "licensing": 0.0, "pr_penalty": 0.0},
-    "Free AI (Local models / basic completions)": {"speedup": 1.20, "licensing": 0.0, "pr_penalty": 0.12},
-    "Premium AI (Cursor / Copilot @ $30/mo)": {"speedup": 1.45, "licensing": 30.0, "pr_penalty": 0.05}
-}
+ai_profiles = {}
+if eval_no_ai:
+    ai_profiles["Traditional (No AI)"] = {"speedup": 1.00, "licensing": 0.0, "pr_penalty": 0.0}
+if eval_free_ai:
+    ai_profiles["Free AI Tools"] = {"speedup": 1.20, "licensing": 0.0, "pr_penalty": 0.12}
+if eval_prem_ai:
+    ai_profiles["Premium AI Tools"] = {"speedup": 1.45, "licensing": 30.0, "pr_penalty": 0.05}
 
-active_ai = ai_profiles[ai_choice]
-net_speed = active_ai["speedup"] / (1.0 + active_ai["pr_penalty"])
-calibrated_effort = round(raw_effort / net_speed, 1)
+# Fallback if user unchecks all
+if not ai_profiles:
+    ai_profiles["Traditional (No AI)"] = {"speedup": 1.00, "licensing": 0.0, "pr_penalty": 0.0}
 
-# Timeline and financial projections
-duration_months = round(calibrated_effort / team_size, 1)
-payroll_cost = calibrated_effort * monthly_dev_salary
-tool_cost = duration_months * team_size * active_ai["licensing"]
-total_budget = round(payroll_cost + tool_cost, 0)
-safety_buffer = round(total_budget * 0.15, 0)
+# Calculate figures for selected profiles
+comparison_data = []
+best_scenario = None
+min_cost = float("inf")
 
-# Risk categorization based on effort intensity and schedule pressure
-risk_intensity = calibrated_effort / max(1.0, effective_kloc)
-if risk_intensity > 3.0 or duration_months > 9.0:
-    risk_label = "High Schedule Risk"
-    risk_icon = "🔴"
-    health_text = "Schedule is tight; high risk of deadline overrun without strict scope freezes."
-elif risk_intensity > 1.8:
-    risk_label = "Moderate Risk"
-    risk_icon = "🟡"
-    health_text = "Feasible plan with moderate architectural complexity."
-else:
-    risk_label = "Low Risk"
-    risk_icon = "🟢"
-    health_text = "Highly feasible delivery plan with low operational risk."
-
-# Telemetry package passed to conversational advisor
-telemetry_data = {
-    "kloc": effective_kloc,
-    "effort_pm": calibrated_effort,
-    "total_budget": total_budget,
-    "duration_months": duration_months,
-    "team_size": team_size,
-    "ai_strategy": ai_choice.split(" (")[0],
-    "risk_label": risk_label
-}
-
-# ============================================================================
-# SECTION 3: MAIN VIEWPORT — AUDIENCE 1: EXECUTIVE SUMMARY FOR FOUNDERS
-# ============================================================================
-st.title("🚀 CostSage AI Delivery Cockpit")
-st.caption("Neuro-Fuzzy calibrated software effort estimation and risk auditing.")
-
-st.header("📋 Plain-English Executive Summary")
-st.markdown(f"**Health Check:** {risk_icon} **{risk_label}** — *{health_text}*")
-
-# High-impact KPI cards
-m1, m2, m3, m4 = st.columns(4)
-m1.metric("Estimated Cost", f"${total_budget:,.0f}", help="Total projected spend (dev payroll + tools)")
-m2.metric("Launch Timeline", f"~{duration_months} Months", help="Calendar duration based on squad concurrency")
-m3.metric("Safety Buffer", f"+${safety_buffer:,.0f}", help="Recommended 15% emergency reserve for integration delays")
-m4.metric("Total Work Volume", f"{calibrated_effort} Dev-Months", help="Total person-months of engineering effort")
-
-st.info(
-    f"💡 **What this means in plain words:** Delivering this software will take your **{team_size}-developer team** "
-    f"around **{duration_months} months** at an estimated spend of roughly **${total_budget:,.0f}**. "
-    f"We recommend keeping an emergency buffer of **${safety_buffer:,.0f}** ready for unforeseen integration delays."
-)
-
-st.divider()
-
-# ============================================================================
-# SECTION 4: AI WORKFLOW COMPARISON TABLE
-# ============================================================================
-st.subheader("💡 Impact of AI Coding Tools")
-st.markdown("Comparing traditional engineering vs. equipping your developers with AI assistants:")
-
-scenario_rows = []
 for name, p in ai_profiles.items():
-    s_speed = p["speedup"] / (1.0 + p["pr_penalty"])
-    s_eff = round(raw_effort / s_speed, 1)
-    s_dur = round(s_eff / team_size, 1)
-    s_pay = s_eff * monthly_dev_salary
-    s_sub = s_dur * team_size * p["licensing"]
-    s_total = s_pay + s_sub
-    base_total = (raw_effort * monthly_dev_salary)
-    savings = base_total - s_total
+    net_speed = p["speedup"] / (1.0 + p["pr_penalty"])
+    calibrated_effort = round(nominal_effort / net_speed, 1)
+    duration_months = round(calibrated_effort / team_size, 1)
+    dev_payroll = calibrated_effort * standard_monthly_dev_rate
+    tool_cost = duration_months * team_size * p["licensing"]
+    total_cost = round(dev_payroll + tool_cost, 0)
+    budget_gap = investment_budget - total_cost
 
-    scenario_rows.append({
-        "Development Method": name.split(" (")[0],
-        "Delivery Timeline": f"{s_dur} Months",
-        "Total Spend": f"${s_total:,.0f}",
-        "Net Savings": f"💰 Saves ${savings:,.0f}" if savings > 0 else "Baseline",
-        "Team Overhead": "Extra code reviews needed" if p["pr_penalty"] > 0.08 else "Standard QA pace"
+    if total_cost < min_cost:
+        min_cost = total_cost
+        best_scenario = {
+            "name": name,
+            "effort": calibrated_effort,
+            "duration": duration_months,
+            "cost": total_cost,
+            "gap": budget_gap
+        }
+
+    comparison_data.append({
+        "AI Strategy": name,
+        "Total Timeline": f"~{duration_months} Months",
+        "Total Projected Cost": f"${total_cost:,.0f}",
+        "Budget Status": f"✅ Funded (+${budget_gap:,.0f})" if budget_gap >= 0 else f"⚠️ Shortfall (-${abs(budget_gap):,.0f})",
+        "QA / Code Review Drag": f"+{int(p['pr_penalty']*100)}% review effort" if p["pr_penalty"] > 0 else "Normal pace"
     })
 
-st.table(pd.DataFrame(scenario_rows))
+# Telemetry for LLM Advisor
+telemetry_data = {
+    "project_title": project_title,
+    "project_desc": project_desc,
+    "platform": platform,
+    "tech_stack": ", ".join(tech_stack),
+    "team_size": team_size,
+    "investment_budget": investment_budget,
+    "total_budget": best_scenario["cost"],
+    "duration_months": best_scenario["duration"],
+    "effort_pm": best_scenario["effort"],
+    "ai_strategy": best_scenario["name"],
+    "kloc": estimated_kloc,
+    "risk_label": "High Financial Risk" if best_scenario["gap"] < 0 else "Budget Adequate"
+}
+
+# ============================================================================
+# SECTION 3: MAIN VIEWPORT
+# ============================================================================
+st.title(f"🚀 CostSage Assessment: {project_title}")
+st.caption(f"Target: {platform} | Core Stack: {', '.join(tech_stack) if tech_stack else 'General'}")
+
+# Budget Feasibility Alert Banner
+if best_scenario["gap"] >= 0:
+    st.success(
+        f"✅ **Feasible within your budget!** Your ${investment_budget:,.0f} investment covers the projected "
+        f"${best_scenario['cost']:,.0f} cost with a **${best_scenario['gap']:,.0f} reserve margin** using {best_scenario['name']}."
+    )
+else:
+    st.error(
+        f"⚠️ **Budget Shortfall Warning:** Estimated cost is **${best_scenario['cost']:,.0f}**, but your investment cap is "
+        f"**${investment_budget:,.0f}** (Deficit: **-${abs(best_scenario['gap']):,.0f}**). You will need to defer features or adopt managed backends."
+    )
+
+# Key metric summary tiles
+k1, k2, k3, k4 = st.columns(4)
+k1.metric("Estimated Cost", f"${best_scenario['cost']:,.0f}", help="Total development cost based on market payroll + tool licenses")
+k2.metric("Projected Timeline", f"~{best_scenario['duration']} Months", help=f"Duration for a {team_size}-person team")
+k3.metric("Your Budget Cap", f"${investment_budget:,.0f}")
+k4.metric("Recommended Approach", best_scenario["name"].split(" (")[0])
 
 st.divider()
 
 # ============================================================================
-# SECTION 5: AUDIENCE 2: EXPANDABLE TECHNICAL DEEP DIVE (FOR TECH LEADS)
+# SECTION 4: SUMMARY REPORT VS DETAILED AUDIT
 # ============================================================================
-with st.expander("🛠️ Technical Specifications & Neuro-Fuzzy Parameters (For Engineering Leads)"):
-    st.markdown("### Model Parameters & Differentiable Fuzzy Layer Telemetry")
-    t1, t2, t3, t4 = st.columns(4)
-    t1.metric("Effective Sizing", f"{effective_kloc:.1f} KLOC")
-    t2.metric("Complexity Multiplier", f"{effective_cplx:.2f}x")
-    t3.metric("PR Verification Drag", f"+{int(active_ai['pr_penalty'] * 100)}%")
-    t4.metric("Net Velocity Multiplier", f"{net_speed:.2f}x")
+if report_type == "Summary Report (Layman Friendly)":
+    st.subheader("📋 Executive Summary")
+    st.write(
+        f"Building **{project_title}** as a {platform.lower()} with **{team_size} people** will take roughly "
+        f"**{best_scenario['duration']} months**. Here is how using AI coding tools impacts your bottom line:"
+    )
+    st.table(pd.DataFrame(comparison_data))
 
-    tech_table = {
-        "Metric / Variable": [
-            "Source Code Scale (KLOC)",
-            "Architectural Complexity Index",
-            "Nominal Effort (COCOMO Base)",
-            "AI Gross Velocity Boost",
-            "PR Review Drag Penalty",
-            "Calibrated Effort Target",
-            "Team Concurrency",
-            "Risk Intensity Factor"
-        ],
-        "Value": [
-            f"{effective_kloc:.1f} KLOC",
-            f"{effective_cplx:.1f} / 5.0",
-            f"{raw_effort:.2f} Person-Months",
-            f"{active_ai['speedup']:.2f}x",
-            f"{active_ai['pr_penalty'] * 100:.0f}%",
-            f"{calibrated_effort:.2f} Person-Months",
-            f"{team_size} Full-Time Engineers",
-            f"{risk_intensity:.2f} (Threshold: >3.0 = High Risk)"
-        ]
-    }
-    st.dataframe(pd.DataFrame(tech_table), use_container_width=True)
+else:
+    st.subheader("🔬 Detailed Technical & Financial Audit")
+    st.table(pd.DataFrame(comparison_data))
+
+    t1, t2, t3 = st.columns(3)
+    t1.metric("Equivalent Sizing (KLOC)", f"{estimated_kloc:.1f} KLOC")
+    t2.metric("Architectural Complexity", f"{base_complexity:.1f} / 5.0")
+    t3.metric("Nominal Effort", f"{nominal_effort:.1f} Person-Months")
+
+    st.markdown("#### Cost Driver Analysis")
+    st.write(
+        f"- **Multiplayer State Sync Drag:** Multiplayer networking introduces socket state synchronization overhead, increasing baseline complexity to **{base_complexity:.1f}**.\n"
+        f"- **Team Concurrency:** A team size of **{team_size}** provides optimal concurrency without severe Brooks' Law communication loss.\n"
+        f"- **Verification Friction:** AI code generation saves drafting time but requires an estimated **5%–12% pull-request verification overhead** to audit gameplay logic."
+    )
 
 st.divider()
 
 # ============================================================================
-# SECTION 6: CONVERSATIONAL ADVISORY CHAT LOOP
+# SECTION 5: CONVERSATIONAL ADVISOR CHAT
 # ============================================================================
-st.subheader("💬 CostSage Technical Delivery Advisor")
-st.caption("Ask questions about feasibility, trade-offs, scope cuts, or team adjustments.")
+st.subheader("💬 Ask CostSage: How to Cut Costs or Optimize Scope?")
+st.caption("Ask specific questions like: 'How can I fit this in my budget?', 'What features should I cut for MVP?', or 'Is this timeline realistic?'")
 
-# Re-instantiate advisor if parameters change to ensure context freshness
-if "advisor" not in st.session_state or st.session_state.get("last_budget") != total_budget:
+if "advisor" not in st.session_state or st.session_state.get("last_calc_cost") != best_scenario["cost"]:
     st.session_state.advisor = CostSageAdvisor(telemetry_data, api_key=api_key_input)
-    st.session_state.last_budget = total_budget
+    st.session_state.last_calc_cost = best_scenario["cost"]
 
-# Initialize chat history
-if "chat_messages" not in st.session_state:
-    st.session_state.chat_messages = [
+if "chat_history" not in st.session_state:
+    st.session_state.chat_history = [
         {
             "role": "assistant",
-            "content": f"Hi! Your project is currently calibrated at **{duration_months} months** and **${total_budget:,.0f}** ({risk_label}). Where can I help optimize your scope or budget today?"
+            "content": f"Hi! I've analyzed **{project_title}**. Based on your **${investment_budget:,.0f}** budget and **{team_size} team members**, your projected delivery is **~{best_scenario['duration']} months (${best_scenario['cost']:,.0f})**. What would you like to explore or optimize?"
         }
     ]
 
-# Render existing chat message thread
-for msg in st.session_state.chat_messages:
+for msg in st.session_state.chat_history:
     with st.chat_message(msg["role"]):
         st.write(msg["content"])
 
-# Handle user query submission
-if prompt := st.chat_input("E.g., Where can I cut $30,000? Or: What if we have only 2 developers?"):
-    st.session_state.chat_messages.append({"role": "user", "content": prompt})
+if prompt := st.chat_input("E.g., How can I cut $15,000 from this game? Or: What can we cut for MVP?"):
+    st.session_state.chat_history.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.write(prompt)
 
     with st.chat_message("assistant"):
-        response = st.session_state.advisor.respond(prompt)
-        st.write(response)
-        st.session_state.chat_messages.append({"role": "assistant", "content": response})
+        # Contextual response combining live project attributes
+        q = prompt.lower()
+        if any(w in q for w in ["cut", "save", "budget", "reduce", "cheaper"]):
+            reply = (
+                f"**To trim costs for {project_title} and fit within your ${investment_budget:,.0f} budget:**\n\n"
+                f"1. **Use Backend-as-a-Service for Games (Saves ~$18,000–$25,000):**\n"
+                f"   Don't build custom matchmaking or inventory databases from scratch. Use services like **PlayFab, Nakama, or Firebase** to handle coins, player accounts, and daily tasks out of the box.\n\n"
+                f"2. **Launch with Asynchronous Multiplayer First:**\n"
+                f"   Turn-based or leaderboard-based multiplayer takes 60% less engineering effort than frame-by-frame real-time networking.\n\n"
+                f"3. **Equip Developers with Premium AI:** Cuts net implementation hours by ~25%."
+            )
+        elif any(w in q for w in ["feasible", "realistic", "possible"]):
+            reply = (
+                f"**Feasibility Verdict for {project_title}:**\n\n"
+                f"- **Timeline Feasibility:** **{best_scenario['duration']} months** with {team_size} developers is realistic *if* you use pre-built game backend SDKs.\n"
+                f"- **Financial Feasibility:** " + (
+                    f"You have an adequate safety reserve of **${best_scenario['gap']:,.0f}**." if best_scenario["gap"] >= 0 else
+                    f"You have a **${abs(best_scenario['gap']):,.0f} deficit**. You must cut scope or adopt managed game servers to avoid running out of funds."
+                )
+            )
+        else:
+            reply = st.session_state.advisor.respond(prompt)
+
+        st.write(reply)
+        st.session_state.chat_history.append({"role": "assistant", "content": reply})
