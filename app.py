@@ -1,12 +1,12 @@
 """
-CostSage AI - Layman & Technical Software Scoping Cockpit
+CostSage AI - Layman & Technical Software Estimation model
 File: app.py
 
 Features:
-- Step-by-step user input: Project Idea, Platform, Language, Budget, Team.
-- Compares AI strategies side-by-side with multi-select.
-- Budget Viability Check: Directly calculates if your investment is sufficient.
-- Report Views: Summary Report vs. Detailed Technical Audit.
+- Step-by-step project intake: Title, Description, Platform, Language/Stack.
+- Budget Viability Engine: Evaluates if user investment covers the build.
+- Multi-select AI comparison: No AI vs. Free AI vs. Premium AI.
+- Dual-view output: Plain-English Summary Report vs. Detailed Technical Audit.
 - Conversational chat advisor dynamically grounded in your exact specs.
 """
 
@@ -21,7 +21,7 @@ st.set_page_config(
 )
 
 # ============================================================================
-# SECTION 1: SIDEBAR - PROJECT QUESTIONNAIRE
+# SECTION 1: SIDEBAR - PROJECT INTAKE QUESTIONNAIRE
 # ============================================================================
 with st.sidebar:
     st.title("💡 CostSage Project Intake")
@@ -76,7 +76,14 @@ if "Mobile App (iOS & Android)" in platform:
     base_complexity += 0.3
 
 # Base sizing estimate (KLOC equivalent) derived from feature scope
-estimated_kloc = 32.0 if "multiplayer" in project_desc.lower() or "game" in project_desc.lower() else 22.0
+desc_lower = project_desc.lower()
+if "multiplayer" in desc_lower or "game" in desc_lower:
+    estimated_kloc = 32.0
+elif "marketplace" in desc_lower or "enterprise" in desc_lower:
+    estimated_kloc = 35.0
+else:
+    estimated_kloc = 20.0
+
 nominal_effort = 2.94 * (estimated_kloc ** 1.05) * (base_complexity / 3.0)
 
 # Typical market blended developer burn rate ($6,500/month per full-stack dev)
@@ -226,7 +233,6 @@ if prompt := st.chat_input("E.g., How can I cut $15,000 from this game? Or: What
         st.write(prompt)
 
     with st.chat_message("assistant"):
-        # Contextual response combining live project attributes
         q = prompt.lower()
         if any(w in q for w in ["cut", "save", "budget", "reduce", "cheaper"]):
             reply = (
