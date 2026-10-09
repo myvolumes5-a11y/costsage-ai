@@ -2,22 +2,13 @@
 CostSage AI - Conversational Advisory Engine
 File: src/llm_reasoning.py
 
-Architecture Overview:
-1. System Prompt Construction:
-   - Injects quantitative PyTorch telemetry (KLOC, Person-Months, Cost, AI Tier, Risk).
-   - Instructs model to deliver plain-English executive summaries first, followed by technical audit steps.
-2. Dual-Engine Dispatcher:
-   - Primary: OpenAI gpt-4o-mini for dynamic, context-aware trade-off reasoning.
-   - Secondary (Offline Fallback): Deterministic rule-based template logic ensuring zero crashes
-     even when offline or running without API keys.
-3. Conversational State Tracking:
-   - Maintains chat message history to support continuous trade-off exploration.
+Dynamically parses team sizing, AI tool differences, and cost-cutting trade-offs.
 """
 
 import os
+import re
 from typing import Dict, Any, List
 
-# Safely import openai without breaking the app if not installed
 try:
     import openai
     OPENAI_AVAILABLE = True
@@ -25,158 +16,153 @@ except ImportError:
     OPENAI_AVAILABLE = False
 
 
-# ============================================================================
-# SECTION 1: SYSTEM PROMPT DEFINITION
-# ============================================================================
-ADVISORY_SYSTEM_PROMPT = """You are CostSage AI, an expert software delivery director and technical financial auditor.
-Your job is to advise founders, product managers, and engineering leads on project feasibility, cost reduction, and delivery risks.
+ADVISORY_SYSTEM_PROMPT = """You are CostSage AI, an expert software delivery director.
+You give direct, mathematically accurate answers to founders and engineering leads.
 
---- CURRENT PROJECT TELEMETRY ---
-- Equivalent Sizing: {kloc:.1f} KLOC
-- Calibrated Effort: {effort_pm:.1f} Person-Months
-- Estimated Budget: ${total_budget:,.0f}
-- Projected Timeline: {duration_months:.1f} Months across {team_size} developers
-- AI Tooling Strategy: {ai_strategy}
-- Risk Level: {risk_label}
+Current Project Specs:
+- Project: {project_title}
+- Total Work Volume: {effort_pm:.1f} Person-Months
+- Current Team: {team_size} developers
+- Current Timeline: {duration_months:.1f} Months
+- Projected Spend: ${total_budget:,.0f} (Cap: ${investment_budget:,.0f})
+- AI Tool Tier: {ai_strategy}
 
---- RESPONSE FORMAT & TONE ---
-1. Plain-English Verdict: Start with a 1-2 sentence executive feasibility verdict that a non-technical founder can immediately understand.
-2. Cost & Scope Levers: Provide 2-3 specific, high-impact levers (e.g., using Backend-as-a-Service, MVP feature deferrals, AI assistant adoption).
-3. Quantify Trade-Offs: State estimated dollar savings and timeline adjustments for each recommendation.
-4. Technical Balance: Keep the tone helpful, direct, and pragmatic without dense academic jargon.
+Instructions:
+Answer the user's specific question directly. If they ask about changing team size, calculate the new schedule (Effort / new_team) with communication overhead.
 """
 
 
-# ============================================================================
-# SECTION 2: ADVISOR CLASS & DISPATCH LOGIC
-# ============================================================================
 class CostSageAdvisor:
-    """
-    Manages conversational audits and feasibility checks using gpt-4o-mini
-    with an automatic offline fallback.
-    """
+    """Manages conversational audits and dynamic scenario modeling."""
 
     def __init__(self, telemetry: Dict[str, Any], api_key: str = None):
-        """
-        Args:
-            telemetry: Dictionary containing live metrics from the PyTorch model & UI.
-            api_key: Optional OpenAI API key passed via UI or environment variable.
-        """
         self.telemetry = telemetry
-        # Read API key from parameter or environment variable
         self.api_key = api_key or os.getenv("OPENAI_API_KEY", "")
         self.history: List[Dict[str, str]] = []
 
-        # Format system prompt with current project telemetry
         system_content = ADVISORY_SYSTEM_PROMPT.format(
-            kloc=self.telemetry.get("kloc", 35.0),
-            effort_pm=self.telemetry.get("effort_pm", 30.0),
-            total_budget=self.telemetry.get("total_budget", 250000.0),
-            duration_months=self.telemetry.get("duration_months", 6.0),
-            team_size=self.telemetry.get("team_size", 4),
-            ai_strategy=self.telemetry.get("ai_strategy", "Traditional"),
-            risk_label=self.telemetry.get("risk_label", "Moderate Risk")
+            project_title=self.telemetry.get("project_title", "Custom Project"),
+            effort_pm=self.telemetry.get("effort_pm", 7.0),
+            team_size=self.telemetry.get("team_size", 2),
+            duration_months=self.telemetry.get("duration_months", 3.5),
+            total_budget=self.telemetry.get("total_budget", 20000.0),
+            investment_budget=self.telemetry.get("investment_budget", 25000.0),
+            ai_strategy=self.telemetry.get("ai_strategy", "Free AI")
         )
         self.history.append({"role": "system", "content": system_content})
 
     def respond(self, user_query: str) -> str:
-        """
-        Processes a user question, queries OpenAI if available,
-        or falls back to deterministic rule logic.
-        """
         self.history.append({"role": "user", "content": user_query})
 
-        # Branch A: Use OpenAI API if available and key is provided
+        # Use OpenAI if available
         if OPENAI_AVAILABLE and self.api_key:
             try:
                 client = openai.OpenAI(api_key=self.api_key)
-                completion = client.chat.completions.create(
+                res = client.chat.completions.create(
                     model="gpt-4o-mini",
                     messages=self.history,
-                    temperature=0.4,
-                    max_tokens=450
+                    temperature=0.3,
+                    max_tokens=400
                 )
-                answer = completion.choices[0].message.content
-                self.history.append({"role": "assistant", "content": answer})
-                return answer
+                ans = res.choices[0].message.content
+                self.history.append({"role": "assistant", "content": ans})
+                return ans
             except Exception:
-                # If network fails, quota expires, or key is invalid, fall through cleanly
                 pass
 
-        # Branch B: Deterministic Offline Fallback
-        fallback_answer = self._rule_based_fallback(user_query)
-        self.history.append({"role": "assistant", "content": fallback_answer})
-        return fallback_answer
+        # Robust, dynamic fallback
+        reply = self._dynamic_fallback(user_query)
+        self.history.append({"role": "assistant", "content": reply})
+        return reply
 
-    # ========================================================================
-    # SECTION 3: DETERMINISTIC RULE-BASED FALLBACK
-    # ========================================================================
-    def _rule_based_fallback(self, query: str) -> str:
-        """
-        Generates realistic advice when running offline or without an API key.
-        Matches keywords related to budget cuts, feasibility, and team sizing.
-        """
+    def _dynamic_fallback(self, query: str) -> str:
         q = query.lower()
-        budget = self.telemetry.get("total_budget", 250000.0)
-        months = self.telemetry.get("duration_months", 6.0)
-        team = self.telemetry.get("team_size", 4)
-        risk = self.telemetry.get("risk_label", "Moderate Risk")
+        title = self.telemetry.get("project_title", "this app")
+        effort = self.telemetry.get("effort_pm", 7.0)
+        curr_team = int(self.telemetry.get("team_size", 2))
+        curr_months = float(self.telemetry.get("duration_months", 3.5))
+        budget_cap = float(self.telemetry.get("investment_budget", 25000))
+        cost = float(self.telemetry.get("total_budget", 20000))
+        ai_strat = self.telemetry.get("ai_strategy", "Free AI")
 
-        # Intent 1: Cost Reduction / Budget Cuts
-        if any(w in q for w in ["cut", "save", "reduce", "budget", "cost", "cheaper"]):
+        # ---------------------------------------------------------
+        # INTENT 1: TEAM SIZING / HEADCOUNT CHANGES
+        # ---------------------------------------------------------
+        if any(w in q for w in ["person", "persons", "people", "team", "dev", "devs", "developer", "developers", "hire", "add"]):
+            # Extract number from query if present (e.g., "3 persons", "team of 4", "add 1")
+            nums = re.findall(r"\b\d+\b", q)
+            target_team = None
+
+            if "add" in q and nums:
+                target_team = curr_team + int(nums[0])
+            elif nums:
+                target_team = int(nums[0])
+            elif "more" in q or "add" in q or "increase" in q:
+                target_team = curr_team + 1
+            elif "less" in q or "fewer" in q or "reduce" in q:
+                target_team = max(1, curr_team - 1)
+
+            if target_team and target_team != curr_team:
+                # Brooks' Law overhead factor for larger teams (coordination tax)
+                comm_overhead = 1.0 + (0.05 * (target_team - 1))
+                new_months = round((effort / target_team) * comm_overhead, 1)
+                
+                # Check direction
+                if target_team > curr_team:
+                    diff_months = round(curr_months - new_months, 1)
+                    return (
+                        f"**Scaling Team from {curr_team} to {target_team} developers for {title}:**\n\n"
+                        f"- **New Timeline:** Delivery drops from **{curr_months} months** down to **~{new_months} months** "
+                        f"(saving ~{diff_months} months).\n"
+                        f"- **Trade-off:** Monthly burn rate increases, but you hit the market significantly faster.\n"
+                        f"- **Recommendation:** For a modular scope (e.g., 1 frontend dev on mobile UI, 1 backend dev on APIs/DB, 1 on integrations), a 3-person team works with minimal communication drag."
+                    )
+                else:
+                    return (
+                        f"**Reducing Team from {curr_team} to {target_team} developer(s):**\n\n"
+                        f"- **New Timeline:** Extends from **{curr_months} months** up to **~{new_months} months**.\n"
+                        f"- **Trade-off:** Lower monthly payroll spend, but time-to-market is delayed by ~{round(new_months - curr_months, 1)} months."
+                    )
+
+        # ---------------------------------------------------------
+        # INTENT 2: WHY DOES FREE AI TAKE THIS LONG?
+        # ---------------------------------------------------------
+        if any(w in q for w in ["why", "free", "slow", "take this", "long"]):
             return (
-                f"**Here are 3 ways to reduce your ${budget:,.0f} budget:**\n\n"
-                f"1. **Adopt Managed Services / BaaS (Saves ~15%–20% / ~${budget * 0.18:,.0f}):**\n"
-                f"   Avoid writing custom authentication, notification, and database plumbing. "
-                f"   Using Supabase, Firebase, or Stripe Checkout cuts architectural complexity from 3.5 down to 2.5.\n\n"
-                f"2. **Equip Developers with Premium AI Tools (Saves ~20%–25% net payroll):**\n"
-                f"   Tools like Cursor Pro or GitHub Copilot ($30/dev/mo) accelerate boilerplate coding by ~45%, "
-                f"   easily saving tens of thousands in payroll despite minor pull-request review overhead.\n\n"
-                f"3. **Freeze MVP Scope:** Lock features for Version 1 to prevent mid-sprint rework, "
-                f"   which eliminates roughly 20% of unplanned lines of code."
+                f"**Why Free AI takes ~{curr_months} months for {title}:**\n\n"
+                f"1. **Autocomplete vs Full Logic:** Free AI tools (like standard Copilot autocomplete or small local models) only predict the next line or short function. They cannot architect entire features or refactor multi-file codebases.\n"
+                f"2. **The Verification Tax (+10%–12% Drag):** Free models frequently hallucinate deprecated syntax or subtle logic bugs. Developers spend ~12% extra time reviewing and testing generated code.\n"
+                f"3. **How to cut it to under 2 months:** Upgrading to **Premium AI (Cursor Pro / Claude 3.5 Sonnet)** allows drafting whole screens and API endpoints in minutes, cutting net delivery down to **~2.2 months** with 2 devs."
             )
 
-        # Intent 2: Timeline & Feasibility Checks
-        elif any(w in q for w in ["feasible", "time", "deadline", "schedule", "when", "months"]):
+        # ---------------------------------------------------------
+        # INTENT 3: COST CUTTING & BUDGET
+        # ---------------------------------------------------------
+        if any(w in q for w in ["cut", "save", "budget", "reduce", "cheaper", "deficit", "shortfall"]):
             return (
-                f"**Feasibility Verdict:** Shipping in **{months} months** with **{team} engineers** is **achievable**, "
-                f"provided you don't face unmocked third-party API delays. Your current risk status is **{risk}**.\n\n"
-                f"*To shorten the timeline:* Do not simply add more developers (Brooks' Law creates communication drag). "
-                f"Instead, defer secondary integrations to Phase 2."
+                f"**3 concrete ways to cut costs on {title} (Target: <${budget_cap:,.0f}):**\n\n"
+                f"1. **Use Backend-as-a-Service (Saves ~$5,000–$8,000):** Use Supabase for user auth, Postgres DB, and storage instead of building custom backend plumbing.\n"
+                f"2. **Stick to Single Codebase (React Native / Flutter):** Builds iOS and Android simultaneously, avoiding duplicate engineering.\n"
+                f"3. **Drop In-Person Hardware for MVP:** Avoid custom POS card-reader hardware. Use web Stripe checkout or cash/counter payments for V1."
             )
 
-        # Intent 3: Team Adjustments / Headcount Changes
-        elif any(w in q for w in ["team", "headcount", "dev", "fewer", "hire", "person", "engineers"]):
-            alt_team = max(1, team - 1)
-            alt_months = round(self.telemetry.get("effort_pm", 30.0) / alt_team, 1)
+        # ---------------------------------------------------------
+        # INTENT 4: FEASIBILITY
+        # ---------------------------------------------------------
+        if any(w in q for w in ["feasible", "realistic", "possible"]):
+            status = "fully within budget" if cost <= budget_cap else f"over budget by ${cost - budget_cap:,.0f}"
             return (
-                f"**Team Sizing Analysis:**\n\n"
-                f"* If you reduce your squad from **{team} to {alt_team} developers**, your monthly burn drops, "
-                f"  but your delivery schedule extends from **{months} months to ~{alt_months} months**.\n"
-                f"* Total development cost remains relatively constant, but market launch is delayed."
+                f"**Feasibility Analysis for {title}:**\n\n"
+                f"- **Schedule Feasibility:** **{curr_months} months** with {curr_team} developer(s) is realistic for an MVP.\n"
+                f"- **Financial Feasibility:** The project is currently **{status}**.\n"
+                f"- **Path to 2-Month Delivery:** Moving to a 3-person team or using Premium AI tools reduces this to under 2.5 months."
             )
 
-        # Default Catch-all Response
+        # Default catch-all
         return (
-            f"Your project is currently calibrated at **{months} months** and **${budget:,.0f}** ({risk}).\n\n"
-            f"You can ask me questions like:\n"
-            f"- *'Where can I cut $40,000 from this budget?'*\n"
-            f"- *'Is this timeline feasible with only 2 developers?'*\n"
-            f"- *'What happens to our schedule if we switch to Premium AI tools?'*"
+            f"For **{title}**, your baseline is **{curr_months} months** with **{curr_team} developers** (${cost:,.0f}).\n\n"
+            f"You can ask me:\n"
+            f"- *'What happens if we have 3 developers?'*\n"
+            f"- *'Why is Free AI slower than Premium AI?'*\n"
+            f"- *'How can I get this done in under 2 months?'*"
         )
-
-
-if __name__ == "__main__":
-    # Smoke test for advisor fallback
-    sample_telemetry = {
-        "kloc": 35.0,
-        "effort_pm": 28.5,
-        "total_budget": 242250.0,
-        "duration_months": 5.7,
-        "team_size": 5,
-        "ai_strategy": "Premium AI",
-        "risk_label": "Low Risk"
-    }
-    advisor = CostSageAdvisor(sample_telemetry)
-    print("Smoke Test Offline Response:")
-    print(advisor.respond("Where can I cut budget?"))
